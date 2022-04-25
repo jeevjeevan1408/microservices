@@ -1,0 +1,81 @@
+--- 
+eureka: 
+  client: 
+    fetch-registry: true
+    register-with-eureka: true
+    service-url: 
+      defaultZone: "http://localhost:8761/eureka/"
+  instance: 
+    hostname: localhost
+server: 
+  port: 9091
+spring: 
+  application: 
+    name: gateway-service
+  cloud: 
+    gateway:
+      routes: 
+      - id: route-1
+        uri: "lb://product-service"
+        predicates: 
+            - Method=GET
+            - Path=/product/*
+            - Header=Authorization, Bear (.*)
+
+        filters:
+        - AddRequestHeader=id, ${server.port}
+        - RewritePath=/list-all-products, /products-list 
+        - PrefixPath=/v1
+        - RemoveRequestHeader=authorization
+        - name: CircuitBreaker
+          args:
+            name: gateway-service
+            fallbackUri: forward:/product/fallback
+            
+      - id: route-2
+        uri: "lb://reviews-service"
+        predicates: 
+            - Method=GET
+            - Path=/**      
+      
+      - id: route-1
+        uri: "lb://product-service"
+        predicates: 
+            - Method=POST
+            - Path=/add
+        filters:
+        - AddRequestHeader=id, ${server.port}
+        - RewritePath=/list-all-products, /v1/products-list 
+        - PrefixPath=/v1      
+
+
+resilience4j:
+  circuitbreaker:
+    circuit-breaker-aspect-order: 1
+    instances:
+      gateway-service:
+        register-health-indicator: true
+        event-consumer-buffer-size: 10
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 3
+        sliding-window-size: 10
+        sliding-window-type: COUNT_BASED  
+        
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      enabled: true
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true                    
+            
+          
+        
